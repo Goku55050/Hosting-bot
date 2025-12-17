@@ -15,12 +15,12 @@ import threading
 import time
 
 # ==================== CONFIGURATION ====================
-BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8207179356:AAGuqE4tM9ovvome9VuVSEnnn8yV2UC-vds')
 ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '6430768414').split(',')]
 MAX_FILES_FREE = 20
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 PORT = int(os.getenv('PORT', 10000))
-RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', '')
+RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://hosting-bot-6zal.onrender.com')
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}" if RENDER_URL else None
 
