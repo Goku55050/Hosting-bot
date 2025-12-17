@@ -4,6 +4,7 @@ import json
 import uuid
 import subprocess
 import sys
+import asyncio
 from datetime import datetime
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -328,12 +329,13 @@ Use buttons below to navigate! 😊
 
 # ==================== WEBHOOK ENDPOINT ====================
 @app.route(WEBHOOK_PATH, methods=['POST'])
-async def webhook():
+def webhook():  # CHANGED: Removed 'async'
     """Handle incoming Telegram updates"""
     if request.method == "POST" and application:
         try:
             update = Update.de_json(request.get_json(force=True), application.bot)
-            await application.process_update(update)
+            # Process update synchronously
+            asyncio.run(application.process_update(update))
             return 'ok', 200
         except Exception as e:
             logger.error(f"Webhook error: {e}")
