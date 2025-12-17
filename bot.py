@@ -16,7 +16,7 @@ import threading
 import time
 
 # ==================== HARDCODED CONFIGURATION ====================
-BOT_TOKEN = "8207179356:AAGuqE4tM9ovvome9VuVSEnnn8yV2UC-vds"
+BOT_TOKEN = "8368363567:AAHYvEL67aMgavBCH74wh43DwyOq1Mm28Q0"
 ADMIN_IDS = [6430768414]
 MAX_FILES_FREE = 20
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
