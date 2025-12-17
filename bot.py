@@ -22,7 +22,7 @@ MAX_FILES_FREE = 20
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 PORT = 10000
 RENDER_URL = "https://hosting-bot-6zal.onrender.com"
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_PATH = "/webhook"  # SIMPLIFIED - no token in path
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
 # ==================== LOGGING ====================
@@ -328,18 +328,28 @@ Use buttons below to navigate! 😊
         return None
 
 # ==================== WEBHOOK ENDPOINT ====================
-@app.route(WEBHOOK_PATH, methods=['POST'])
-def webhook():  # CHANGED: Removed 'async'
+@app.route(WEBHOOK_PATH, methods=['POST', 'GET'])  # ADDED 'GET' for testing
+def webhook():
     """Handle incoming Telegram updates"""
-    if request.method == "POST" and application:
-        try:
-            update = Update.de_json(request.get_json(force=True), application.bot)
-            # Process update synchronously
-            asyncio.run(application.process_update(update))
-            return 'ok', 200
-        except Exception as e:
-            logger.error(f"Webhook error: {e}")
-            return 'error', 500
+    if request.method == "POST":
+        if application:
+            try:
+                update = Update.de_json(request.get_json(force=True), application.bot)
+                asyncio.run(application.process_update(update))
+                return 'ok', 200
+            except Exception as e:
+                logger.error(f"Webhook error: {e}")
+                return 'error', 500
+        else:
+            return 'bot not initialized', 500
+    elif request.method == "GET":
+        # For testing - show webhook is working
+        return jsonify({
+            "status": "webhook endpoint active",
+            "methods": ["POST"],
+            "bot": "ready" if application else "not ready",
+            "timestamp": datetime.now().isoformat()
+        })
     return 'method not allowed', 405
 
 # ==================== HEALTH ENDPOINTS ====================
@@ -352,8 +362,8 @@ def home():
         "uptime": str(datetime.now() - app_start_time),
         "bot": "active" if application else "inactive",
         "users": len(db.data),
-        "webhook": "set" if application else "not set",
-        "webhook_url": WEBHOOK_URL
+        "webhook": WEBHOOK_URL,
+        "webhook_status": "ready"
     })
 
 @app.route('/health')
@@ -382,6 +392,8 @@ def stats_endpoint():
 def setup_webhook():
     """Force set webhook on startup"""
     try:
+        logger.info(f"🔗 Setting webhook to: {WEBHOOK_URL}")
+        
         # Delete existing webhook
         delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
         response = requests.get(delete_url, timeout=10)
@@ -392,13 +404,18 @@ def setup_webhook():
         response = requests.get(set_url, timeout=10)
         
         if response.json().get('ok'):
-            logger.info(f"✅ Webhook set successfully: {WEBHOOK_URL}")
+            logger.info(f"✅ Webhook set successfully!")
             
             # Verify webhook
             info_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
             info = requests.get(info_url, timeout=10).json()
             webhook_info = info.get('result', {})
-            logger.info(f"📡 Webhook info: URL={webhook_info.get('url', 'Unknown')}, Pending={webhook_info.get('pending_update_count', 0)}")
+            
+            logger.info(f"📡 Webhook Verification:")
+            logger.info(f"   URL: {webhook_info.get('url', 'Unknown')}")
+            logger.info(f"   Has Custom Certificate: {webhook_info.get('has_custom_certificate', False)}")
+            logger.info(f"   Pending Updates: {webhook_info.get('pending_update_count', 0)}")
+            logger.info(f"   Last Error: {webhook_info.get('last_error_message', 'None')}")
             
             return True
         else:
@@ -440,14 +457,12 @@ if __name__ == '__main__':
     # Setup Telegram bot
     if setup_bot():
         # Setup webhook (FORCE SET IT)
-        if setup_webhook():
-            # Start keep-alive system
-            start_keep_alive()
-            
-            logger.info(f"🌐 Starting Flask server on port {PORT}")
-            app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
-        else:
-            logger.error("❌ Webhook setup failed, bot won't receive messages!")
-            app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+        setup_webhook()
+        
+        # Start keep-alive system
+        start_keep_alive()
+        
+        logger.info(f"🌐 Starting Flask server on port {PORT}")
+        app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
     else:
         logger.error("❌ Failed to setup bot, exiting...")
