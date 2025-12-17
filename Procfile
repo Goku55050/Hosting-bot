@@ -1,2 +1,3 @@
 web: gunicorn wsgi:app --bind 0.0.0.0:$PORT
 worker: python bot.py
+keepalive: python keep_alive.py
