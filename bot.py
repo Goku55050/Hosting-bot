@@ -14,15 +14,15 @@ import requests
 import threading
 import time
 
-# ==================== CONFIGURATION ====================
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8207179356:AAGuqE4tM9ovvome9VuVSEnnn8yV2UC-vds')
-ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '6430768414').split(',')]
+# ==================== HARDCODED CONFIGURATION ====================
+BOT_TOKEN = "8207179356:AAGuqE4tM9ovvome9VuVSEnnn8yV2UC-vds"
+ADMIN_IDS = [6430768414]
 MAX_FILES_FREE = 20
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-PORT = int(os.getenv('PORT', 10000))
-RENDER_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://hosting-bot-6zal.onrender.com')
+PORT = 10000
+RENDER_URL = "https://hosting-bot-6zal.onrender.com"
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}" if RENDER_URL else None
+WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
 # ==================== LOGGING ====================
 logging.basicConfig(
@@ -81,10 +81,6 @@ def setup_bot():
     global application
     
     try:
-        if not BOT_TOKEN:
-            logger.error("❌ BOT_TOKEN not set!")
-            return None
-        
         # Create Telegram application
         application = Application.builder().token(BOT_TOKEN).build()
         
@@ -335,9 +331,14 @@ Use buttons below to navigate! 😊
 async def webhook():
     """Handle incoming Telegram updates"""
     if request.method == "POST" and application:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        await application.process_update(update)
-    return 'ok', 200
+        try:
+            update = Update.de_json(request.get_json(force=True), application.bot)
+            await application.process_update(update)
+            return 'ok', 200
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+            return 'error', 500
+    return 'method not allowed', 405
 
 # ==================== HEALTH ENDPOINTS ====================
 @app.route('/')
@@ -349,12 +350,17 @@ def home():
         "uptime": str(datetime.now() - app_start_time),
         "bot": "active" if application else "inactive",
         "users": len(db.data),
-        "webhook": "set" if application else "not set"
+        "webhook": "set" if application else "not set",
+        "webhook_url": WEBHOOK_URL
     })
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+    return jsonify({
+        "status": "healthy", 
+        "timestamp": datetime.now().isoformat(),
+        "bot_token": BOT_TOKEN[:10] + "..."
+    })
 
 @app.route('/ping')
 def ping():
@@ -370,18 +376,45 @@ def stats_endpoint():
         "timestamp": datetime.now().isoformat()
     })
 
+# ==================== WEBHOOK SETUP FUNCTION ====================
+def setup_webhook():
+    """Force set webhook on startup"""
+    try:
+        # Delete existing webhook
+        delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
+        response = requests.get(delete_url, timeout=10)
+        logger.info(f"🗑️ Delete webhook: {response.json().get('description', 'OK')}")
+        
+        # Set new webhook
+        set_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={WEBHOOK_URL}"
+        response = requests.get(set_url, timeout=10)
+        
+        if response.json().get('ok'):
+            logger.info(f"✅ Webhook set successfully: {WEBHOOK_URL}")
+            
+            # Verify webhook
+            info_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+            info = requests.get(info_url, timeout=10).json()
+            webhook_info = info.get('result', {})
+            logger.info(f"📡 Webhook info: URL={webhook_info.get('url', 'Unknown')}, Pending={webhook_info.get('pending_update_count', 0)}")
+            
+            return True
+        else:
+            logger.error(f"❌ Failed to set webhook: {response.json()}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Webhook setup error: {e}")
+        return False
+
 # ==================== KEEP-ALIVE SYSTEM ====================
 def start_keep_alive():
     """Ping our own service to prevent Render from sleeping"""
     def ping_task():
         while True:
             try:
-                if RENDER_URL:
-                    response = requests.get(f"{RENDER_URL}/ping", timeout=10)
-                    logger.info(f"✅ Keep-alive ping: {response.status_code}")
-                else:
-                    response = requests.get(f"http://localhost:{PORT}/ping", timeout=5)
-                    logger.info(f"✅ Local ping: {response.status_code}")
+                response = requests.get(f"{RENDER_URL}/ping", timeout=10)
+                logger.info(f"✅ Keep-alive ping: {response.status_code}")
             except Exception as e:
                 logger.warning(f"Keep-alive failed: {e}")
             time.sleep(240)  # Every 4 minutes
@@ -390,28 +423,13 @@ def start_keep_alive():
     thread.start()
     logger.info("✅ Keep-alive system started")
 
-# ==================== WEBHOOK SETUP ====================
-def setup_webhook():
-    """Set up Telegram webhook"""
-    try:
-        if not BOT_TOKEN or not RENDER_URL:
-            logger.warning("⚠️ BOT_TOKEN or RENDER_URL not set, webhook not configured")
-            return
-        
-        # Set webhook
-        application.bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"✅ Webhook set to: {WEBHOOK_URL}")
-        
-        # Verify webhook
-        webhook_info = application.bot.get_webhook_info()
-        logger.info(f"📡 Webhook info: {webhook_info.url}")
-        
-    except Exception as e:
-        logger.error(f"❌ Webhook setup failed: {e}")
-
 # ==================== MAIN STARTUP ====================
 if __name__ == '__main__':
     logger.info("🚀 Starting V - Hosting Bot...")
+    logger.info(f"🤖 Bot Token: {BOT_TOKEN[:10]}...")
+    logger.info(f"👑 Admin ID: {ADMIN_IDS[0]}")
+    logger.info(f"🌐 Render URL: {RENDER_URL}")
+    logger.info(f"📡 Webhook URL: {WEBHOOK_URL}")
     
     # Create directories
     os.makedirs("user_files", exist_ok=True)
@@ -419,17 +437,15 @@ if __name__ == '__main__':
     
     # Setup Telegram bot
     if setup_bot():
-        # Setup webhook
-        setup_webhook()
-        
-        # Start keep-alive system
-        start_keep_alive()
-        
-        logger.info(f"🌐 Starting Flask server on port {PORT}")
-        logger.info(f"🔗 Render URL: {RENDER_URL}")
-        logger.info(f"📡 Webhook URL: {WEBHOOK_URL}")
-        
-        # Start Flask app
-        app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+        # Setup webhook (FORCE SET IT)
+        if setup_webhook():
+            # Start keep-alive system
+            start_keep_alive()
+            
+            logger.info(f"🌐 Starting Flask server on port {PORT}")
+            app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+        else:
+            logger.error("❌ Webhook setup failed, bot won't receive messages!")
+            app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
     else:
         logger.error("❌ Failed to setup bot, exiting...")
